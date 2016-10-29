@@ -1,64 +1,52 @@
 package ik.am.demo;
 
-import java.util.List;
-
-import org.apache.tika.metadata.Metadata;
-import org.apache.tika.parser.ParseContext;
-import org.apache.tika.parser.Parser;
-import org.apache.tika.parser.pdf.PDFParser;
-import org.apache.tika.sax.BodyContentHandler;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.CommandLineRunner;
+import org.springframework.batch.core.Job;
+import org.springframework.batch.core.Step;
+import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
+import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
+import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
+import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.task.configuration.EnableTask;
 import org.springframework.context.annotation.Bean;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.support.ResourcePatternResolver;
-import org.xml.sax.ContentHandler;
-
-import com.atilika.kuromoji.ipadic.Token;
-import com.atilika.kuromoji.ipadic.Tokenizer;
+import org.springframework.context.annotation.Configuration;
 
 @SpringBootApplication
 @EnableTask
+@EnableBatchProcessing
 public class IndexImportTaskApplication {
-	private final static Logger log = LoggerFactory
-			.getLogger(IndexImportTaskApplication.class);
 
 	public static void main(String[] args) {
 		SpringApplication.run(IndexImportTaskApplication.class, args);
 	}
 
-	@Bean
-	CommandLineRunner runner(ResourcePatternResolver resourcePatternResolver,
-			@Value("${s3.bucket-name}") String bucketName) {
-		return args -> {
-			if (args.length == 0) {
-				log.error("No Args!");
-				System.exit(1);
-			}
-			String fileName = args[0];
-			String resourceName = String.format("s3://%s/%s", bucketName, fileName);
-			log.info("Loading {}", resourceName);
-			Resource file = resourcePatternResolver.getResource(resourceName);
-			Parser parser = new PDFParser();
-			ContentHandler contentHandler = new BodyContentHandler();
-			Metadata metadata = new Metadata();
-			ParseContext context = new ParseContext();
-			log.info("Parsing {}", resourceName);
-			parser.parse(file.getInputStream(), contentHandler, metadata, context);
-			Tokenizer tokenizer = new Tokenizer();
-			log.info("Tokenizing {}", resourceName);
-			List<Token> tokens = tokenizer.tokenize(contentHandler.toString());
-			tokens.stream()
-					.filter(token -> "名詞".equals(token.getPartOfSpeechLevel1())
-							&& "一般".equals(token.getPartOfSpeechLevel2())
-							&& token.getSurface().length() > 1)
-					.map(Token::getSurface).distinct().sorted()
-					.forEach(System.out::println);
-		};
+	@Configuration
+	static class JobConfiguration {
+		private final JobBuilderFactory jobBuilderFactory;
+		private final StepBuilderFactory stepBuilderFactory;
+
+		public JobConfiguration(JobBuilderFactory jobBuilderFactory,
+				StepBuilderFactory stepBuilderFactory) {
+			this.jobBuilderFactory = jobBuilderFactory;
+			this.stepBuilderFactory = stepBuilderFactory;
+		}
+
+		@Bean
+		Step step(TokenItemReader reader) {
+			return stepBuilderFactory.get("index-import").<String, String> chunk(30)
+					.reader(reader).writer(items -> {
+						System.out.println("Write batching ...");
+						for (String item : items) {
+							System.out.println(">> " + item);
+						}
+					}).build();
+		}
+
+		@Bean
+		Job job() {
+			return this.jobBuilderFactory.get("index-import").start(step(null))
+					.incrementer(new RunIdIncrementer()).build();
+		}
 	}
 }
