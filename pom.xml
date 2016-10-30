@@ -5,7 +5,7 @@
 
     <groupId>ik.am.demo</groupId>
     <artifactId>index-import-task</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>1.0.0-dev0</version>
     <packaging>jar</packaging>
 
     <name>index-import-task</name>
