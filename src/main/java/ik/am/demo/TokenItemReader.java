@@ -35,7 +35,7 @@ public class TokenItemReader implements ItemReader<String> {
 		log.info("Loading {}", resourceName);
 		Resource file = resourcePatternResolver.getResource(resourceName);
 		Parser parser = new PDFParser();
-		ContentHandler contentHandler = new BodyContentHandler();
+		ContentHandler contentHandler = new BodyContentHandler(-1);
 		Metadata metadata = new Metadata();
 		ParseContext context = new ParseContext();
 		log.info("Parsing {}", resourceName);
